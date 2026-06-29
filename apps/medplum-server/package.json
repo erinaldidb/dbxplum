@@ -1,0 +1,11 @@
+{
+  "name": "medplum-databricks",
+  "version": "1.0.0",
+  "description": "Medplum FHIR server on Databricks Apps",
+  "scripts": {
+    "start": "bash start.sh"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

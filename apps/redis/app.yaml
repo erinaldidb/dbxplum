@@ -1,0 +1,4 @@
+command: ["bash", "start.sh"]
+env:
+  - name: REDIS_PASSWORD
+    value: "medplum-redis-secret"

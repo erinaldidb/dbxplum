@@ -1,0 +1,17 @@
+bundle:
+  name: medplum-fhir-platform
+
+variables:
+  redis_password:
+    description: "Redis server password"
+    default: "medplum-redis-secret"
+
+include:
+  - "resources/*.yml"
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://fevm-medplum.cloud.databricks.com
+      profile: fevm-medplum

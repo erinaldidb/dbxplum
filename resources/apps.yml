@@ -1,0 +1,11 @@
+resources:
+  apps:
+    medplum_redis:
+      name: "medplum-redis"
+      description: "Redis server for Medplum job queues, caching, and pub/sub"
+      source_code_path: ../apps/redis
+
+    medplum_server:
+      name: "medplum-server"
+      description: "Medplum FHIR R4 server"
+      source_code_path: ../apps/medplum-server
