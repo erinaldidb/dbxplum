@@ -12,7 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.DATABRICKS_APP_PORT || process.env.PORT || '8000', 10);
 const INTERNAL_PORT = PORT + 1;
 const REDIS_PORT = 6379;
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD || 'change-me-redis-secret';
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD || 'redis';
 const PUBLIC_DIR = join(__dirname, 'public');
 
 const MIME_TYPES = {
@@ -122,13 +122,14 @@ function generateConfig() {
     storageBaseUrl: `${baseUrl}storage/`,
     binaryStorage: 'file:/tmp/medplum-binary',
     database: {
-      host: process.env.LAKEBASE_HOST || 'your-lakebase-endpoint.database.region.cloud.databricks.com',
-      port: parseInt(process.env.LAKEBASE_PORT || '5432', 10),
-      dbname: process.env.LAKEBASE_DB || 'databricks_postgres',
-      username: process.env.LAKEBASE_USER || 'medplum_svc',
-      password: process.env.LAKEBASE_PASSWORD || 'change-me-db-password',
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432', 10),
+      dbname: process.env.PGDATABASE || 'medplum',
+      username: process.env.PGUSER || 'postgres',
       runMigrations: true,
-      ssl: { require: true, rejectUnauthorized: false },
+      ssl: process.env.PGSSLMODE && process.env.PGSSLMODE !== 'disable'
+        ? { require: true, rejectUnauthorized: false }
+        : undefined,
     },
     redis: {
       host: '127.0.0.1',
@@ -379,7 +380,7 @@ async function startMedplum() {
   console.log('Starting Medplum server...');
   console.log(`  Internal port: ${INTERNAL_PORT}`);
   console.log(`  Public port: ${PORT}`);
-  console.log(`  Database: ${process.env.LAKEBASE_HOST || 'your-lakebase-endpoint.database.region.cloud.databricks.com'}`);
+  console.log(`  Database: ${process.env.PGHOST || 'localhost'}`);
   console.log(`  Redis: 127.0.0.1:${REDIS_PORT}`);
 
   process.env.MEDPLUM_VERSION = '5.1.22';

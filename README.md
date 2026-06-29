@@ -166,17 +166,48 @@ Using `databricks_postgres` as the database name enables Lakebase Change Data Fe
 
 ## Configuration
 
-Environment variables in `apps/medplum-server/app.yaml`:
+### Lakebase (PostgreSQL)
+
+The Lakebase database is bound as a `postgres` resource in `app.yaml`. Databricks automatically injects these environment variables at runtime:
 
 | Variable | Description |
 |----------|-------------|
-| `LAKEBASE_HOST` | Lakebase endpoint hostname |
-| `LAKEBASE_PORT` | PostgreSQL port (default: 5432) |
-| `LAKEBASE_DB` | Database name (`databricks_postgres` for CDF) |
-| `LAKEBASE_USER` | Service principal username |
-| `LAKEBASE_PASSWORD` | Service principal password |
-| `REDIS_PASSWORD` | Redis authentication password |
+| `PGHOST` | Lakebase endpoint hostname (auto-injected) |
+| `PGPORT` | PostgreSQL port (auto-injected) |
+| `PGDATABASE` | Database name (auto-injected) |
+| `PGUSER` | Service principal username (auto-injected) |
+| `PGSSLMODE` | SSL mode, typically `require` (auto-injected) |
+| `PGAPPNAME` | Application name (auto-injected) |
+
+Authentication uses the app's service principal — no password is needed.
+
+### Secrets
+
+| Resource | Description |
+|----------|-------------|
+| `redis_secret` | Redis password, stored in a Databricks secret scope and referenced via `valueFrom` |
+
+### Other
+
+| Variable | Description |
+|----------|-------------|
 | `NODE_ENV` | Node environment (`production`) |
+
+### Setup
+
+1. **Create a secret scope** for your app secrets:
+   ```bash
+   databricks secrets create-scope dbxplum-secrets
+   ```
+
+2. **Store the Redis password** in the secret scope:
+   ```bash
+   databricks secrets put-secret dbxplum-secrets redis_password --string-value "your-secure-redis-password"
+   ```
+
+3. **Bind the Lakebase database** as a postgres resource when deploying the app. The `medplum_db` resource in `app.yaml` and `resources/apps.yml` handles this declaratively via DABs.
+
+4. **Bind the secret** (`redis_secret`) to the secret scope key created above during app deployment.
 
 ## CLI / Script Access
 
