@@ -1,0 +1,17 @@
+bundle:
+  name: dbxplum
+
+variables:
+  redis_password:
+    description: "Redis server password"
+    default: "change-me-redis-secret"
+
+include:
+  - "resources/*.yml"
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://your-workspace.cloud.databricks.com
+      profile: your-profile

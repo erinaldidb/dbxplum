@@ -1,0 +1,6 @@
+resources:
+  database_instances:
+    medplum_db:
+      name: "medplum-fhir-db"
+      capacity: "CU_1"
+      enable_pg_native_login: true

@@ -1,0 +1,8 @@
+resources:
+  apps:
+    medplum_server:
+      name: "medplum-server"
+      description: "Medplum FHIR R4 server with co-located Redis and frontend UI"
+      source_code_path: ../apps/medplum-server
+      # NOTE: Lakebase postgres resource binding is managed via direct app deployment
+      # until DABs fully supports the postgres resource schema (branch_id + database_name)

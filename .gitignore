@@ -1,0 +1,9 @@
+node_modules/
+.bundle/
+.databricks/
+*.log
+.env
+.env.*
+bin/
+/tmp/
+.DS_Store
