@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Medplum</title>
+    <meta name="description" content="Medplum: Medical Collaboration" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="theme-color" content="#5b2876" />
+    <meta name="medplum-version" content="5.1.22-6150c32" />
+    <link rel="shortcut icon" type="image/x-icon" href="/assets/favicon-DP3nZwE_.ico" />
+    <link rel="apple-touch-icon" href="/img/medplum-logo-512x512.png" />
+    <script>
+      // Token relay: Databricks gateway strips Authorization headers.
+      // Mirror the Medplum access token to a cookie so the proxy can inject it.
+      (function() {
+        const COOKIE_NAME = '__medplum_token';
+        function saveToken(token) {
+          document.cookie = COOKIE_NAME + '=' + encodeURIComponent(token) + '; path=/; SameSite=Lax; Secure';
+        }
+        // Intercept fetch() - Medplum client uses fetch API
+        const origFetch = window.fetch;
+        window.fetch = function(input, init) {
+          if (init && init.headers) {
+            let authValue = null;
+            if (init.headers instanceof Headers) {
+              authValue = init.headers.get('Authorization');
+            } else if (Array.isArray(init.headers)) {
+              const pair = init.headers.find(([k]) => k.toLowerCase() === 'authorization');
+              if (pair) authValue = pair[1];
+            } else if (typeof init.headers === 'object') {
+              authValue = init.headers['Authorization'] || init.headers['authorization'];
+            }
+            if (authValue && authValue.startsWith('Bearer ')) {
+              saveToken(authValue.slice(7));
+            }
+          }
+          return origFetch.apply(this, arguments);
+        };
+        // Also intercept XMLHttpRequest in case it's used
+        const origSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+        XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+          if (name.toLowerCase() === 'authorization' && typeof value === 'string' && value.startsWith('Bearer ')) {
+            saveToken(value.slice(7));
+          }
+          return origSetRequestHeader.call(this, name, value);
+        };
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-D4aQni9B.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-36idBdlk.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

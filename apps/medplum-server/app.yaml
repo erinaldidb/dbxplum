@@ -1,6 +1,6 @@
-command: ["bash", "start.sh"]
+command: ["node", "--max-old-space-size=1536", "start.js"]
 env:
   - name: NODE_ENV
     value: "production"
   - name: REDIS_PASSWORD
-    value: "medplum-redis-secret"
+    valueFrom: redis_secret

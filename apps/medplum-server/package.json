@@ -1,11 +1,16 @@
 {
-  "name": "medplum-databricks",
+  "name": "medplum-server",
   "version": "1.0.0",
-  "description": "Medplum FHIR server on Databricks Apps",
-  "scripts": {
-    "start": "bash start.sh"
-  },
+  "private": true,
+  "type": "module",
   "engines": {
     "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "start": "node start.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0"
   }
 }

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="medplum" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#29b6a8"/>
+      <stop offset="100%" style="stop-color:#1a9e8f"/>
+    </linearGradient>
+    <linearGradient id="redis" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff4438"/>
+      <stop offset="100%" style="stop-color:#d62b1f"/>
+    </linearGradient>
+    <linearGradient id="lakebase" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a9eff"/>
+      <stop offset="100%" style="stop-color:#2d7dd2"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="250" fill="url(#bg)" stroke="#2a2a4a" stroke-width="4"/>
+
+  <!-- Outer ring - subtle -->
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#3a3a5a" stroke-width="1" stroke-dasharray="4,8" opacity="0.5"/>
+
+  <!-- MEDPLUM: Medical cross (center-top) - represents FHIR/healthcare -->
+  <g transform="translate(256, 160)" filter="url(#glow)">
+    <!-- Cross shape -->
+    <rect x="-15" y="-45" width="30" height="90" rx="6" fill="url(#medplum)"/>
+    <rect x="-45" y="-15" width="90" height="30" rx="6" fill="url(#medplum)"/>
+    <!-- Heartbeat pulse on cross -->
+    <polyline points="-20,0 -10,0 -5,-12 0,12 5,-8 10,0 20,0" 
+              stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- REDIS: Diamond/cube (bottom-left) -->
+  <g transform="translate(170, 340)" filter="url(#glow)">
+    <!-- Redis diamond shape -->
+    <polygon points="0,-40 45,0 0,40 -45,0" fill="url(#redis)"/>
+    <!-- Inner star/asterisk pattern (Redis logo reference) -->
+    <line x1="0" y1="-20" x2="0" y2="20" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="-18" y1="-10" x2="18" y2="10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="-18" y1="10" x2="18" y2="-10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Speed lines -->
+    <line x1="-55" y1="-5" x2="-50" y2="-5" stroke="#ff4438" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+    <line x1="-58" y1="5" x2="-50" y2="5" stroke="#ff4438" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  </g>
+
+  <!-- LAKEBASE: Wave/lake + database cylinder (bottom-right) -->
+  <g transform="translate(342, 340)" filter="url(#glow)">
+    <!-- Database cylinder -->
+    <ellipse cx="0" cy="-25" rx="35" ry="12" fill="url(#lakebase)"/>
+    <rect x="-35" y="-25" width="70" height="40" fill="url(#lakebase)"/>
+    <ellipse cx="0" cy="15" rx="35" ry="12" fill="#2563a8"/>
+    <!-- Middle ring -->
+    <ellipse cx="0" cy="-5" rx="35" ry="12" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.4"/>
+    <!-- Wave pattern (lake) -->
+    <path d="M-30,5 Q-20,-5 -10,5 Q0,15 10,5 Q20,-5 30,5" 
+          stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+    <!-- Databricks sparkle -->
+    <circle cx="20" cy="-30" r="3" fill="#ffffff" opacity="0.7"/>
+    <circle cx="-22" cy="-32" r="2" fill="#ffffff" opacity="0.5"/>
+  </g>
+
+  <!-- Connecting arcs between the three components -->
+  <path d="M 220,200 Q 190,270 185,300" stroke="#29b6a8" stroke-width="1.5" fill="none" opacity="0.4" stroke-dasharray="3,4"/>
+  <path d="M 292,200 Q 320,270 327,300" stroke="#29b6a8" stroke-width="1.5" fill="none" opacity="0.4" stroke-dasharray="3,4"/>
+  <path d="M 215,340 Q 256,360 297,340" stroke="#9b59b6" stroke-width="1.5" fill="none" opacity="0.4" stroke-dasharray="3,4"/>
+
+  <!-- Data flow dots on arcs -->
+  <circle cx="200" cy="250" r="2.5" fill="#29b6a8" opacity="0.7"/>
+  <circle cx="310" cy="250" r="2.5" fill="#4a9eff" opacity="0.7"/>
+  <circle cx="256" cy="355" r="2.5" fill="#9b59b6" opacity="0.7"/>
+
+  <!-- Title text: dbxplum -->
+  <text x="256" y="450" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="700" letter-spacing="2">
+    <tspan fill="#29b6a8">dbx</tspan><tspan fill="#ffffff">plum</tspan>
+  </text>
+
+  <!-- Subtitle -->
+  <text x="256" y="478" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#8a8aaa" letter-spacing="3" text-transform="uppercase">
+    FHIR R4 · REDIS · LAKEBASE
+  </text>
+</svg>

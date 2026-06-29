@@ -5,6 +5,9 @@ variables:
   redis_password:
     description: "Redis server password"
     default: "medplum-redis-secret"
+  lakebase_branch:
+    description: "Lakebase branch (e.g. production)"
+    default: "production"
 
 include:
   - "resources/*.yml"

@@ -1,10 +1,10 @@
 node_modules/
-medplum-src/
 .bundle/
 .databricks/
 *.log
 .env
 .env.*
-binary/
-/tmp/
 .DS_Store
+.vscode/
+medplum-src/
+scripts/

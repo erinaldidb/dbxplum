@@ -1,11 +1,20 @@
 resources:
   apps:
-    medplum_redis:
-      name: "medplum-redis"
-      description: "Redis server for Medplum job queues, caching, and pub/sub"
-      source_code_path: ../apps/redis
-
     medplum_server:
       name: "medplum-server"
-      description: "Medplum FHIR R4 server"
+      description: "Medplum FHIR R4 server with co-located Redis and frontend UI"
       source_code_path: ../apps/medplum-server
+      compute_size: LARGE
+      resources:
+        - name: medplum_db
+          description: "Medplum FHIR Lakebase Autoscale database"
+          postgres:
+            branch: projects/medplum/branches/${var.lakebase_branch}
+            database: projects/medplum/branches/${var.lakebase_branch}/databases/databricks-postgres
+            permission: CAN_CONNECT_AND_CREATE
+        - name: redis_secret
+          description: "Redis password from secret scope"
+          secret:
+            scope: medplum-secrets
+            key: redis-password
+            permission: READ
