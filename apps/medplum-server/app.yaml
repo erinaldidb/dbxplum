@@ -2,3 +2,5 @@ command: ["bash", "start.sh"]
 env:
   - name: NODE_ENV
     value: "production"
+  - name: REDIS_PASSWORD
+    value: "medplum-redis-secret"

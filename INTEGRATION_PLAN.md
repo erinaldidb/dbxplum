@@ -3,9 +3,10 @@
 ## Executive Summary
 
 Deploy **Medplum** (open-source FHIR-compliant EHR platform) on **Databricks** using:
-- **Databricks App #1** — Medplum server (Node.js/Express)
-- **Databricks App #2** — Redis server (dedicated, independently scalable)
+- **Databricks App** — Medplum server (Node.js/Express) with co-located Redis subprocess
 - **Lakebase** — dedicated PostgreSQL-compatible database
+
+> **Architecture Update (2026-06-29):** Redis is co-located within the Medplum app because Databricks Apps do not support raw TCP between apps (only HTTPS via gateway). See `docs/phase2-network-results.md`.
 
 Apps can scale up to 4 vCPUs / 12GB RAM. Node.js is confirmed compatible with Databricks Apps.
 
@@ -88,16 +89,15 @@ Apps can scale up to 4 vCPUs / 12GB RAM. Node.js is confirmed compatible with Da
 - Array types are the primary concern — they're core to Medplum's search model
 - Advisory locks can be worked around if unsupported (single-instance doesn't need them)
 
-### 3.2 MEDIUM: Inter-App Networking (Medplum ↔ Redis)
+### 3.2 ~~MEDIUM~~ RESOLVED: Inter-App Networking (Medplum ↔ Redis)
 
 **Problem:** The two Databricks Apps need to communicate. Medplum connects to Redis over TCP (port 6379).
 
-**Questions to validate:**
-- Can Databricks Apps reach each other via internal networking?
-- Is there a service discovery mechanism or fixed internal hostname?
-- Latency between apps (Redis is latency-sensitive)
+**VALIDATED (2026-06-29):** Inter-app raw TCP is NOT possible. The platform only routes HTTPS (port 443) between apps via its gateway with OAuth. Ports 6379 and 8000 return "No route to host".
 
-**Fallback:** If inter-app networking is not possible, co-locate Redis as a subprocess within the Medplum app (sacrificing independent scaling).
+**Resolution:** Redis is co-located as a subprocess within the Medplum server app. This is acceptable because Medplum's Redis usage is lightweight (job queues, caching, pub/sub).
+
+See: `docs/phase2-network-results.md` for full test results.
 
 ### 3.3 MEDIUM: Binary Storage Adapter
 
