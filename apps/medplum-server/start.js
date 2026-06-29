@@ -454,6 +454,7 @@ function startFrontendProxy() {
   return server;
 }
 
+
 async function startMedplum() {
   const { token: pgToken, expiresIn } = await fetchDatabricksToken();
   if (pgToken) {

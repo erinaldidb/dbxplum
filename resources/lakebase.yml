@@ -1,0 +1,7 @@
+resources:
+  postgres_projects:
+    medplum:
+      project_id: "medplum"
+      display_name: "medplum"
+      default_branch: "projects/medplum/branches/${var.lakebase_branch}"
+      purge_on_delete: true

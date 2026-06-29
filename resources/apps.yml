@@ -9,8 +9,8 @@ resources:
         - name: medplum_db
           description: "Medplum FHIR Lakebase Autoscale database"
           postgres:
-            branch: projects/medplum/branches/${var.lakebase_branch}
-            database: projects/medplum/branches/${var.lakebase_branch}/databases/databricks-postgres
+            branch: ${resources.postgres_projects.medplum.name}/branches/${var.lakebase_branch}
+            database: ${resources.postgres_projects.medplum.name}/branches/${var.lakebase_branch}/databases/databricks-postgres
             permission: CAN_CONNECT_AND_CREATE
         - name: redis_secret
           description: "Redis password from secret scope"

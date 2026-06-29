@@ -9,6 +9,7 @@ const binDir = join(appDir, 'bin');
 
 mkdirSync(binDir, { recursive: true });
 
+
 const redisBin = join(binDir, 'redis-server');
 
 if (existsSync(redisBin)) {
