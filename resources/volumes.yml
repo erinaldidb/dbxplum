@@ -1,7 +1,0 @@
-resources:
-  volumes:
-    medplum_binary_storage:
-      catalog_name: "medplum"
-      schema_name: "fhir"
-      name: "binary_storage"
-      volume_type: "MANAGED"

@@ -1,4 +1,0 @@
-resources:
-  postgres_projects:
-    medplum_db:
-      project_id: "medplum-fhir-db"
