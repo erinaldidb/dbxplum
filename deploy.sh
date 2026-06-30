@@ -189,43 +189,13 @@ PGPASSWORD="$TOKEN" psql \
   }
 ok "Permissions granted"
 
-# --- Step 5: Start the app (compute must be active before deploy) ---
-info "Step 5: Starting app compute..."
-databricks apps start "$APP_NAME" 2>&1 | tail -3 || true
+# --- Step 5: Run the app via bundle ---
+info "Step 5: Running the app (bundle run starts compute + deploys code)..."
+databricks bundle run medplum_server 2>&1 | tail -10 || true
+ok "App run triggered"
 
-# Wait for compute to be active
-MAX_COMPUTE_WAIT=180
-COMPUTE_WAITED=0
-while [ $COMPUTE_WAITED -lt $MAX_COMPUTE_WAIT ]; do
-  COMPUTE_STATE=$(databricks apps get "$APP_NAME" --output json 2>/dev/null | \
-    jq -r '.compute_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
-  if [ "$COMPUTE_STATE" = "ACTIVE" ]; then
-    ok "App compute is active"
-    break
-  fi
-  sleep 10
-  COMPUTE_WAITED=$((COMPUTE_WAITED + 10))
-  if [ $((COMPUTE_WAITED % 30)) -eq 0 ]; then
-    info "  Waiting for compute... (${COMPUTE_WAITED}s, state: ${COMPUTE_STATE})"
-  fi
-done
-
-if [ $COMPUTE_WAITED -ge $MAX_COMPUTE_WAIT ]; then
-  error "Timed out waiting for app compute to become ACTIVE (last state: ${COMPUTE_STATE})"
-fi
-
-# --- Step 6: Deploy app code ---
-info "Step 6: Deploying app code..."
-
-# Get the source code path from the bundle deployment
-CURRENT_USER=$(databricks current-user me --output json 2>/dev/null | jq -r '.userName')
-SOURCE_PATH="/Workspace/Users/${CURRENT_USER}/.bundle/${BUNDLE_NAME}/dev/files/apps/medplum-server"
-
-databricks apps deploy "$APP_NAME" --source-code-path "$SOURCE_PATH" 2>&1 | tail -5
-ok "App code deployed"
-
-# --- Step 7: Wait for app to be healthy ---
-info "Step 7: Waiting for app to start..."
+# --- Step 6: Wait for app to be healthy ---
+info "Step 6: Waiting for app to start..."
 MAX_APP_WAIT=300
 APP_WAITED=0
 
