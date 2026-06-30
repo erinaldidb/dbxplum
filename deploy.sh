@@ -6,7 +6,7 @@
 #   2. Deploys the DABs bundle (Lakebase project + app)
 #   3. Waits for the Lakebase database to be ready
 #   4. Grants schema permissions to the app's service principal
-#   5. Deploys the app code and starts it
+#   5. Starts the app, then deploys the code
 #
 # Usage:
 #   ./deploy.sh              # Full deploy (destroy + deploy + grant + start)
@@ -19,7 +19,7 @@ BUNDLE_NAME="medplum-fhir-platform"
 APP_NAME="medplum-server"
 LAKEBASE_PROJECT="medplum"
 LAKEBASE_BRANCH="production"
-DB_NAME="databricks-postgres"
+DB_NAME="databricks_postgres"
 SCHEMA_NAME="public"  # Grant CREATE on public schema for Medplum migrations
 
 # --- Colors ---
@@ -53,6 +53,7 @@ done
 info "Running pre-flight checks..."
 command -v databricks >/dev/null 2>&1 || error "databricks CLI not found. Install it first."
 command -v jq >/dev/null 2>&1 || error "jq not found. Install it first."
+command -v psql >/dev/null 2>&1 || error "psql not found. Install it first (brew install libpq)."
 
 # Verify bundle is valid
 databricks bundle validate >/dev/null 2>&1 || error "Bundle validation failed. Run 'databricks bundle validate' to see errors."
@@ -118,16 +119,14 @@ ok "Bundle deployed"
 # --- Step 3: Wait for Lakebase database to be ready ---
 info "Step 3: Waiting for Lakebase database to be ready..."
 
-MAX_WAIT=120
+MAX_WAIT=180
 WAITED=0
 while [ $WAITED -lt $MAX_WAIT ]; do
-  # Check if the branch exists and is ready
-  BRANCH_STATUS=$(databricks lakebase branches get \
-    "projects/${LAKEBASE_PROJECT}/branches/${LAKEBASE_BRANCH}" \
-    --output json 2>/dev/null | jq -r '.state // "UNKNOWN"' 2>/dev/null || echo "NOT_FOUND")
+  BRANCH_STATUS=$(databricks postgres list-branches "projects/${LAKEBASE_PROJECT}" --output json 2>/dev/null | \
+    jq -r ".[] | select(.branch_id == \"${LAKEBASE_BRANCH}\") | .status.current_state // \"UNKNOWN\"" 2>/dev/null || echo "NOT_FOUND")
 
-  if [ "$BRANCH_STATUS" = "ACTIVE" ] || [ "$BRANCH_STATUS" = "ONLINE" ]; then
-    ok "Lakebase branch is ready (state: ${BRANCH_STATUS})"
+  if [ "$BRANCH_STATUS" = "READY" ]; then
+    ok "Lakebase branch is ready"
     break
   fi
 
@@ -135,8 +134,8 @@ while [ $WAITED -lt $MAX_WAIT ]; do
     info "  Current state: ${BRANCH_STATUS} — waiting..."
   fi
 
-  sleep 5
-  WAITED=$((WAITED + 5))
+  sleep 10
+  WAITED=$((WAITED + 10))
 
   if [ $((WAITED % 30)) -eq 0 ]; then
     info "  Still waiting... (${WAITED}s elapsed, state: ${BRANCH_STATUS})"
@@ -161,96 +160,93 @@ fi
 
 info "  App SP client ID: ${SP_CLIENT_ID}"
 
-# Get the SP's display name (needed for GRANT)
-SP_INFO=$(databricks service-principals list --output json 2>/dev/null | \
-  jq -r ".[] | select(.application_id == \"${SP_CLIENT_ID}\") | .display_name" 2>/dev/null || echo "")
+# Get the endpoint host for direct psql connection
+ENDPOINT_INFO=$(databricks postgres get-endpoint \
+  "projects/${LAKEBASE_PROJECT}/branches/${LAKEBASE_BRANCH}/endpoints/primary" \
+  --output json 2>/dev/null)
+PG_HOST=$(echo "$ENDPOINT_INFO" | jq -r '.status.hosts.host // empty')
 
-if [ -z "$SP_INFO" ]; then
-  # Try getting it from the service-principals API with the application_id filter
-  SP_INFO=$(databricks service-principals list --output json 2>/dev/null | \
-    jq -r ".[].display_name" 2>/dev/null | head -1 || echo "")
+if [ -z "$PG_HOST" ]; then
+  error "Could not find Lakebase endpoint host"
 fi
 
-# Use the SP client ID to run the GRANT via Lakebase SQL
-# The format for granting is: GRANT CREATE ON SCHEMA <schema> TO `<sp_client_id>`
-info "  Granting CREATE on schema '${SCHEMA_NAME}' to SP..."
+info "  Lakebase host: ${PG_HOST}"
 
-# Execute the GRANT via lakebase SQL
-GRANT_SQL="GRANT CREATE ON SCHEMA ${SCHEMA_NAME} TO \`${SP_CLIENT_ID}\`; GRANT USAGE ON SCHEMA ${SCHEMA_NAME} TO \`${SP_CLIENT_ID}\`;"
+# Get an OAuth token for psql authentication
+TOKEN=$(databricks auth token --output json 2>/dev/null | jq -r '.access_token // empty')
+if [ -z "$TOKEN" ]; then
+  error "Could not get OAuth token from databricks CLI"
+fi
 
-GRANT_RESULT=$(databricks lakebase execute-statement \
-  "projects/${LAKEBASE_PROJECT}/branches/${LAKEBASE_BRANCH}/databases/${DB_NAME}" \
-  --statement "${GRANT_SQL}" \
-  --output json 2>&1) || true
+# Run the GRANT via psql
+info "  Running GRANT CREATE ON SCHEMA ${SCHEMA_NAME}..."
+PGPASSWORD="$TOKEN" psql \
+  "host=${PG_HOST} port=5432 dbname=${DB_NAME} user=databricks sslmode=require" \
+  -c "GRANT ALL ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";" \
+  2>&1 || {
+    warn "GRANT command failed — the app may not have CREATE permission on public schema"
+    warn "You can grant manually: GRANT ALL ON SCHEMA public TO \"${SP_CLIENT_ID}\";"
+  }
+ok "Permissions granted"
 
-if echo "$GRANT_RESULT" | grep -qi "error\|failed\|denied"; then
-  warn "GRANT via lakebase execute-statement may have failed: ${GRANT_RESULT}"
-  info "  Trying alternative approach via statement execution API..."
+# --- Step 5: Start the app (compute must be active before deploy) ---
+info "Step 5: Starting app compute..."
+databricks apps start "$APP_NAME" 2>&1 | tail -3 || true
 
-  # Alternative: use the Databricks SQL statement execution if lakebase CLI doesn't support it
-  # Get the connection details and run via psql-style approach
-  CONN_INFO=$(databricks lakebase branches get \
-    "projects/${LAKEBASE_PROJECT}/branches/${LAKEBASE_BRANCH}" \
-    --output json 2>/dev/null || echo "{}")
-
-  PG_HOST=$(echo "$CONN_INFO" | jq -r '.postgres_connection_info.host // empty' 2>/dev/null)
-  PG_PORT=$(echo "$CONN_INFO" | jq -r '.postgres_connection_info.port // "5432"' 2>/dev/null)
-
-  if [ -n "$PG_HOST" ]; then
-    info "  Lakebase host: ${PG_HOST}:${PG_PORT}"
-    info "  Attempting GRANT via psql..."
-
-    # Get a token for authentication
-    TOKEN=$(databricks auth token --output json 2>/dev/null | jq -r '.access_token // empty')
-
-    if [ -n "$TOKEN" ] && command -v psql >/dev/null 2>&1; then
-      PGPASSWORD="$TOKEN" psql \
-        "host=${PG_HOST} port=${PG_PORT} dbname=${DB_NAME} user=databricks sslmode=require" \
-        -c "GRANT CREATE ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";" \
-        -c "GRANT USAGE ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";" \
-        2>&1 && ok "Permissions granted via psql" || warn "psql GRANT attempt also failed"
-    else
-      warn "psql not available or no token. You may need to grant permissions manually:"
-      warn "  GRANT CREATE ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";"
-    fi
+# Wait for compute to be active
+MAX_COMPUTE_WAIT=180
+COMPUTE_WAITED=0
+while [ $COMPUTE_WAITED -lt $MAX_COMPUTE_WAIT ]; do
+  COMPUTE_STATE=$(databricks apps get "$APP_NAME" --output json 2>/dev/null | \
+    jq -r '.compute_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+  if [ "$COMPUTE_STATE" = "ACTIVE" ]; then
+    ok "App compute is active"
+    break
   fi
-else
-  ok "Permissions granted via lakebase execute-statement"
+  sleep 10
+  COMPUTE_WAITED=$((COMPUTE_WAITED + 10))
+  if [ $((COMPUTE_WAITED % 30)) -eq 0 ]; then
+    info "  Waiting for compute... (${COMPUTE_WAITED}s, state: ${COMPUTE_STATE})"
+  fi
+done
+
+if [ $COMPUTE_WAITED -ge $MAX_COMPUTE_WAIT ]; then
+  error "Timed out waiting for app compute to become ACTIVE (last state: ${COMPUTE_STATE})"
 fi
 
-# --- Step 5: Deploy and start the app ---
-info "Step 5: Deploying app code..."
+# --- Step 6: Deploy app code ---
+info "Step 6: Deploying app code..."
 
-# Trigger a fresh deployment
-databricks apps deploy "$APP_NAME" --source-code-path "/Workspace/Users/$(databricks current-user me --output json | jq -r '.userName')/.bundle/${BUNDLE_NAME}/dev/files/apps/medplum-server" 2>&1 | tail -5
-ok "App deployment triggered"
+# Get the source code path from the bundle deployment
+CURRENT_USER=$(databricks current-user me --output json 2>/dev/null | jq -r '.userName')
+SOURCE_PATH="/Workspace/Users/${CURRENT_USER}/.bundle/${BUNDLE_NAME}/dev/files/apps/medplum-server"
 
-info "Step 6: Starting the app..."
-databricks apps start "$APP_NAME" 2>&1 | tail -5 || true
+databricks apps deploy "$APP_NAME" --source-code-path "$SOURCE_PATH" 2>&1 | tail -5
+ok "App code deployed"
 
 # --- Step 7: Wait for app to be healthy ---
 info "Step 7: Waiting for app to start..."
-MAX_APP_WAIT=180
+MAX_APP_WAIT=300
 APP_WAITED=0
 
 while [ $APP_WAITED -lt $MAX_APP_WAIT ]; do
-  APP_STATUS=$(databricks apps get "$APP_NAME" --output json 2>/dev/null | jq -r '.compute_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
-  DEPLOY_STATUS=$(databricks apps get "$APP_NAME" --output json 2>/dev/null | jq -r '.active_deployment.status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+  APP_JSON=$(databricks apps get "$APP_NAME" --output json 2>/dev/null || echo "{}")
+  APP_STATE=$(echo "$APP_JSON" | jq -r '.app_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
 
-  if [ "$APP_STATUS" = "ACTIVE" ] && [ "$DEPLOY_STATUS" = "SUCCEEDED" ]; then
+  if [ "$APP_STATE" = "RUNNING" ]; then
     ok "App is running!"
     break
   fi
 
-  if [ "$APP_STATUS" = "ERROR" ] || [ "$DEPLOY_STATUS" = "FAILED" ]; then
-    error "App failed to start. Check logs with: databricks apps get-logs ${APP_NAME}"
+  if [ "$APP_STATE" = "CRASHED" ] || [ "$APP_STATE" = "FAILED" ]; then
+    error "App crashed. Check logs with: databricks apps get-logs ${APP_NAME}"
   fi
 
   sleep 10
   APP_WAITED=$((APP_WAITED + 10))
 
   if [ $((APP_WAITED % 30)) -eq 0 ]; then
-    info "  Waiting... (${APP_WAITED}s, compute: ${APP_STATUS}, deploy: ${DEPLOY_STATUS})"
+    info "  Waiting... (${APP_WAITED}s, app state: ${APP_STATE})"
   fi
 done
 
