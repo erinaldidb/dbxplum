@@ -63,13 +63,56 @@ if [ "$SKIP_DESTROY" = false ]; then
   info "Step 1: Destroying existing resources..."
   databricks bundle destroy --auto-approve 2>&1 | tail -5
   ok "Resources destroyed"
+
+  # Wait for the app to be fully deleted from the platform
+  info "Step 1b: Waiting for app '$APP_NAME' to be fully deleted..."
+  MAX_DELETE_WAIT=180
+  DELETE_WAITED=0
+  while [ $DELETE_WAITED -lt $MAX_DELETE_WAIT ]; do
+    APP_EXISTS=$(databricks apps get "$APP_NAME" 2>&1 || true)
+    if echo "$APP_EXISTS" | grep -qi "does not exist\|not found\|RESOURCE_DOES_NOT_EXIST\|404"; then
+      break
+    fi
+    # Check if app is in a deleting/deleted state
+    APP_STATE=$(echo "$APP_EXISTS" | jq -r '.app_status.state // empty' 2>/dev/null || true)
+    if [ "$APP_STATE" = "DELETED" ]; then
+      break
+    fi
+    sleep 10
+    DELETE_WAITED=$((DELETE_WAITED + 10))
+    echo -n "."
+  done
+  echo ""
+  if [ $DELETE_WAITED -ge $MAX_DELETE_WAIT ]; then
+    warn "App deletion wait timed out after ${MAX_DELETE_WAIT}s — proceeding anyway (deploy may retry)"
+  else
+    ok "App fully deleted (waited ${DELETE_WAITED}s)"
+  fi
 else
   info "Step 1: Skipping destroy (--no-destroy flag)"
 fi
 
 # --- Step 2: Deploy the bundle ---
 info "Step 2: Deploying DABs bundle (Lakebase project + app definition)..."
-databricks bundle deploy 2>&1 | tail -10
+# Retry deploy up to 3 times in case the app deletion is still propagating
+DEPLOY_ATTEMPTS=0
+MAX_DEPLOY_ATTEMPTS=3
+while [ $DEPLOY_ATTEMPTS -lt $MAX_DEPLOY_ATTEMPTS ]; do
+  DEPLOY_OUTPUT=$(databricks bundle deploy 2>&1) && break
+  DEPLOY_ATTEMPTS=$((DEPLOY_ATTEMPTS + 1))
+  if echo "$DEPLOY_OUTPUT" | grep -qi "already exists"; then
+    warn "App still exists on platform — waiting 30s before retry ($DEPLOY_ATTEMPTS/$MAX_DEPLOY_ATTEMPTS)..."
+    sleep 30
+  else
+    echo "$DEPLOY_OUTPUT" | tail -10
+    error "Bundle deploy failed with unexpected error"
+  fi
+done
+if [ $DEPLOY_ATTEMPTS -ge $MAX_DEPLOY_ATTEMPTS ]; then
+  echo "$DEPLOY_OUTPUT" | tail -10
+  error "Bundle deploy failed after $MAX_DEPLOY_ATTEMPTS attempts — app may still be deleting. Try again in a minute."
+fi
+echo "$DEPLOY_OUTPUT" | tail -5
 ok "Bundle deployed"
 
 # --- Step 3: Wait for Lakebase database to be ready ---
