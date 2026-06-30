@@ -9,7 +9,7 @@
 A production-ready deployment of [Medplum](https://www.medplum.com/) on the Databricks platform, using:
 
 - **Databricks Apps** — managed container runtime (LARGE compute)
-- **Lakebase Autoscaling** — PostgreSQL-compatible database with auto-injected connection env vars
+- **Lakebase** — PostgreSQL-compatible database, provisioned by the bundle
 - **Co-located Redis** — compiled from source at deploy time, running in-process
 - **Databricks Asset Bundles (DABs)** — infrastructure-as-code deployment
 
@@ -36,7 +36,8 @@ A production-ready deployment of [Medplum](https://www.medplum.com/) on the Data
 
 ## Key Features
 
-- **No hardcoded secrets** — Redis password via `valueFrom` (Databricks secret scope); PG auth via OAuth client_credentials flow
+- **One-command deploy** — `./deploy.sh` handles everything: infrastructure, permissions, and app startup
+- **No hardcoded secrets** — Redis password via Databricks secret scope; PG auth via OAuth client_credentials flow
 - **Auto token refresh** — OAuth JWT refreshes 5 min before expiry (~every 55 min), so PG connections never go stale
 - **Cookie-based auth relay** — Medplum frontend auth works through Databricks gateway via `HttpOnly` session cookies
 - **Single-app deployment** — server, Redis, and frontend all run in one LARGE app for simplicity
@@ -45,26 +46,20 @@ A production-ready deployment of [Medplum](https://www.medplum.com/) on the Data
 ## Prerequisites
 
 1. [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) (v0.200+)
-2. A Databricks workspace with Apps and Lakebase enabled
-3. A CLI profile configured (e.g., `fevm-medplum`)
+2. `jq` installed
+3. A Databricks workspace with Apps and Lakebase enabled
+4. A CLI profile configured (e.g., `fevm-medplum`)
 
-## Setup
+## Quick Start
 
-### 1. Create Lakebase project
-
-```bash
-databricks lakebase projects create --name medplum --profile <your-profile>
-databricks lakebase branches create --project medplum --name production --profile <your-profile>
-```
-
-### 2. Create secret scope
+### 1. Create secret scope (one-time)
 
 ```bash
-databricks secrets create-scope medplum-secrets --profile <your-profile>
-databricks secrets put-secret medplum-secrets redis-password --string-value "<your-redis-password>" --profile <your-profile>
+databricks secrets create-scope medplum-secrets
+databricks secrets put-secret medplum-secrets redis-password --string-value "<your-redis-password>"
 ```
 
-### 3. Configure bundle target
+### 2. Configure bundle target
 
 Edit `databricks.yml` — update the `workspace.host` and `workspace.profile` for your environment:
 
@@ -77,34 +72,44 @@ targets:
       profile: your-profile
 ```
 
-### 4. Deploy
+### 3. Deploy
 
 ```bash
-databricks bundle deploy
-databricks apps start medplum-server --profile <your-profile>
+./deploy.sh
 ```
 
-### 5. Grant schema permissions (first deploy only)
+That's it. The script handles:
 
-After the first deploy, the app's service principal needs CREATE permission on the `public` schema:
+| Step | Action |
+|------|--------|
+| 1 | Destroy existing resources (clean slate) |
+| 1b | Wait for app to be fully deleted from platform |
+| 2 | Deploy DABs bundle (Lakebase project + app definition) with retry |
+| 3 | Wait for Lakebase database to become active |
+| 4 | Grant `CREATE` + `USAGE` on `public` schema to the app's service principal |
+| 5 | Deploy the app code |
+| 6 | Start the app |
+| 7 | Wait for the app to be healthy and print the URL |
+
+### Redeploy without destroying
 
 ```bash
-echo 'GRANT ALL ON SCHEMA public TO "<SP-CLIENT-ID>";' | databricks psql --autoscaling --profile <your-profile>
+./deploy.sh --no-destroy
 ```
-
-The SP client ID is visible in the app's environment as `DATABRICKS_CLIENT_ID`.
 
 ## Project Structure
 
 ```
 dbxplum/
 ├── databricks.yml              # DABs bundle config
+├── deploy.sh                   # Full deployment script (destroy → deploy → grant → start)
 ├── resources/
-│   └── apps.yml                # App resource definition (compute, DB, secrets)
+│   ├── apps.yml                # App resource definition (compute, DB, secrets)
+│   └── lakebase.yml            # Lakebase project definition
 └── apps/medplum-server/
     ├── app.yaml                # App runtime config (command, env vars)
     ├── start.js                # Main entrypoint (OAuth, Redis, Medplum, proxy)
-    ├── package.json            # Node.js deps
+    ├── package.json            # Node.js metadata
     ├── scripts/build.js        # Build script (compiles Redis from source)
     ├── server/                 # Medplum server bundle (pre-built)
     ├── public/                 # Medplum frontend (pre-built React SPA)
@@ -112,6 +117,14 @@ dbxplum/
 ```
 
 ## How It Works
+
+### Deployment Flow (`deploy.sh`)
+
+1. **Bundle destroy** removes the Terraform-managed resources (app + Lakebase project)
+2. **Deletion wait** polls until the app is fully gone from the platform (prevents "already exists" race)
+3. **Bundle deploy** creates the Lakebase project/branch and app definition via Terraform
+4. **Permission grant** fetches the app's auto-assigned service principal and grants it DDL rights on the `public` schema (required for Medplum migrations)
+5. **App deploy + start** pushes the source code and boots the container
 
 ### Authentication Flow
 
@@ -123,40 +136,52 @@ dbxplum/
 
 ### Lakebase Connection
 
-Lakebase auto-injects these env vars when a `postgres` resource is bound:
+Lakebase auto-injects these env vars when a `postgres` resource is bound to the app:
 
-| Env Var | Example |
-|---------|---------|
-| `PGHOST` | `ep-morning-haze-xxxx.database.us-east-1.cloud.databricks.com` |
+| Env Var | Description |
+|---------|-------------|
+| `PGHOST` | Lakebase endpoint hostname |
 | `PGDATABASE` | `databricks_postgres` |
 | `PGPORT` | `5432` |
-| `PGUSER` | `<service-principal-client-id>` |
+| `PGUSER` | Service principal client ID |
 | `PGSSLMODE` | `require` |
 | `PGAPPNAME` | `medplum-server` |
 
 No connection strings or passwords in config files — everything is runtime-injected.
 
-## Development
+### Bundle Resources
 
-### Redeploy after code changes
+The DABs bundle (`resources/`) defines:
 
-```bash
-databricks bundle deploy
-databricks apps deploy medplum-server \
-  --source-code-path /Workspace/Users/<you>/.bundle/medplum-fhir-platform/dev/files/apps/medplum-server \
-  --profile <your-profile>
-```
+- **`postgres_projects.medplum`** — Lakebase project with `purge_on_delete: true` (clean destroys)
+- **`apps.medplum_server`** — LARGE compute app with:
+  - `CAN_CONNECT_AND_CREATE` permission on the Lakebase branch
+  - Read access to the `medplum-secrets` secret scope
+
+## Operations
 
 ### View logs
 
 ```bash
-databricks apps logs medplum-server --profile <your-profile>
+databricks apps get-logs medplum-server
 ```
 
 ### Connect to database
 
 ```bash
-databricks psql --autoscaling --profile <your-profile>
+databricks postgres connect projects/medplum/branches/production
+```
+
+### Check app status
+
+```bash
+databricks apps get medplum-server
+```
+
+### Full redeploy from scratch
+
+```bash
+./deploy.sh
 ```
 
 ## License
