@@ -172,6 +172,12 @@ fi
 
 info "  Lakebase host: ${PG_HOST}"
 
+# Get the current user's email (used as the psql user / postgres role)
+PG_USER=$(databricks current-user me --output json 2>/dev/null | jq -r '.userName // empty')
+if [ -z "$PG_USER" ]; then
+  error "Could not determine current Databricks user"
+fi
+
 # Get an OAuth token for psql authentication
 TOKEN=$(databricks auth token --output json 2>/dev/null | jq -r '.access_token // empty')
 if [ -z "$TOKEN" ]; then
@@ -179,13 +185,15 @@ if [ -z "$TOKEN" ]; then
 fi
 
 # Run the GRANT via psql
-info "  Running GRANT CREATE ON SCHEMA ${SCHEMA_NAME}..."
+info "  Connecting as: ${PG_USER}"
+info "  Running GRANT ALL ON SCHEMA ${SCHEMA_NAME}..."
 PGPASSWORD="$TOKEN" psql \
-  "host=${PG_HOST} port=5432 dbname=${DB_NAME} user=databricks sslmode=require" \
+  "host=${PG_HOST} port=5432 dbname=${DB_NAME} user=${PG_USER} sslmode=require connect_timeout=30" \
   -c "GRANT ALL ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";" \
   2>&1 || {
     warn "GRANT command failed — the app may not have CREATE permission on public schema"
-    warn "You can grant manually: GRANT ALL ON SCHEMA public TO \"${SP_CLIENT_ID}\";"
+    warn "You can grant manually:"
+    warn "  PGPASSWORD=\$(databricks auth token --output json | jq -r .access_token) psql \"host=${PG_HOST} port=5432 dbname=${DB_NAME} user=${PG_USER} sslmode=require\" -c 'GRANT ALL ON SCHEMA public TO \"${SP_CLIENT_ID}\";'"
   }
 ok "Permissions granted"
 
