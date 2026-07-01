@@ -14,6 +14,10 @@
 #
 set -euo pipefail
 
+# Always run from the repo root so bundle commands resolve databricks.yml
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # --- Configuration ---
 BUNDLE_NAME="medplum-fhir-platform"
 APP_NAME="medplum-server"
@@ -197,41 +201,67 @@ PGPASSWORD="$TOKEN" psql \
   }
 ok "Permissions granted"
 
-# --- Step 5: Run the app via bundle ---
-info "Step 5: Running the app (bundle run starts compute + deploys code)..."
-databricks bundle run medplum_server 2>&1 | tail -10 || true
-ok "App run triggered"
+# --- Step 5: Start compute, deploy code, and wait for the app ---
+# bundle deploy only creates the app resource — it does not start compute or
+# push source code. bundle run is required to start the app and deploy code.
+info "Step 5: Starting app and deploying code (this may take several minutes)..."
+if ! databricks bundle run medplum_server; then
+  error "Failed to start app. Check logs with: databricks apps get-logs ${APP_NAME}"
+fi
+ok "App started and code deployed"
 
-# --- Step 6: Wait for app to be healthy ---
-info "Step 6: Waiting for app to start..."
-MAX_APP_WAIT=300
-APP_WAITED=0
+# --- Step 6: Verify app is healthy ---
+info "Step 6: Verifying app health..."
+APP_JSON=$(databricks apps get "$APP_NAME" --output json 2>/dev/null || echo "{}")
+APP_STATE=$(echo "$APP_JSON" | jq -r '.app_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+COMPUTE_STATE=$(echo "$APP_JSON" | jq -r '.compute_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
 
-while [ $APP_WAITED -lt $MAX_APP_WAIT ]; do
-  APP_JSON=$(databricks apps get "$APP_NAME" --output json 2>/dev/null || echo "{}")
-  APP_STATE=$(echo "$APP_JSON" | jq -r '.app_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+if [ "$COMPUTE_STATE" = "STOPPED" ]; then
+  error "App compute is still stopped after bundle run. Check status with: databricks apps get ${APP_NAME}"
+fi
 
-  if [ "$APP_STATE" = "RUNNING" ]; then
-    ok "App is running!"
-    break
+if [ "$APP_STATE" = "CRASHED" ] || [ "$APP_STATE" = "FAILED" ]; then
+  error "App crashed after startup. Check logs with: databricks apps get-logs ${APP_NAME}"
+fi
+
+if [ "$APP_STATE" != "RUNNING" ]; then
+  info "  App state is ${APP_STATE} (compute: ${COMPUTE_STATE}) — waiting for RUNNING..."
+  MAX_APP_WAIT=300
+  APP_WAITED=0
+
+  while [ $APP_WAITED -lt $MAX_APP_WAIT ]; do
+    APP_JSON=$(databricks apps get "$APP_NAME" --output json 2>/dev/null || echo "{}")
+    APP_STATE=$(echo "$APP_JSON" | jq -r '.app_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+    COMPUTE_STATE=$(echo "$APP_JSON" | jq -r '.compute_status.state // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+
+    if [ "$APP_STATE" = "RUNNING" ]; then
+      ok "App is running!"
+      break
+    fi
+
+    if [ "$APP_STATE" = "CRASHED" ] || [ "$APP_STATE" = "FAILED" ]; then
+      error "App crashed. Check logs with: databricks apps get-logs ${APP_NAME}"
+    fi
+
+    if [ "$COMPUTE_STATE" = "STOPPED" ]; then
+      error "App compute stopped unexpectedly. Check logs with: databricks apps get-logs ${APP_NAME}"
+    fi
+
+    sleep 10
+    APP_WAITED=$((APP_WAITED + 10))
+
+    if [ $((APP_WAITED % 30)) -eq 0 ]; then
+      info "  Waiting... (${APP_WAITED}s, app: ${APP_STATE}, compute: ${COMPUTE_STATE})"
+    fi
+  done
+
+  if [ $APP_WAITED -ge $MAX_APP_WAIT ]; then
+    warn "Timed out waiting for app to reach RUNNING (last state: ${APP_STATE})"
+    info "  Check status with: databricks apps get ${APP_NAME}"
+    info "  Check logs with: databricks apps get-logs ${APP_NAME}"
   fi
-
-  if [ "$APP_STATE" = "CRASHED" ] || [ "$APP_STATE" = "FAILED" ]; then
-    error "App crashed. Check logs with: databricks apps get-logs ${APP_NAME}"
-  fi
-
-  sleep 10
-  APP_WAITED=$((APP_WAITED + 10))
-
-  if [ $((APP_WAITED % 30)) -eq 0 ]; then
-    info "  Waiting... (${APP_WAITED}s, app state: ${APP_STATE})"
-  fi
-done
-
-if [ $APP_WAITED -ge $MAX_APP_WAIT ]; then
-  warn "Timed out waiting for app to be fully healthy"
-  info "  Check status with: databricks apps get ${APP_NAME}"
-  info "  Check logs with: databricks apps get-logs ${APP_NAME}"
+else
+  ok "App is running!"
 fi
 
 # --- Done ---
