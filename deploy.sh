@@ -14,6 +14,11 @@
 #
 set -euo pipefail
 
+# Re-exec with bash if invoked via `sh deploy.sh` (macOS /bin/sh lacks bash features)
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 # Always run from the repo root so bundle commands resolve databricks.yml
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -33,10 +38,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
-ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+info()  { printf '%b\n' "${BLUE}[INFO]${NC}  $*"; }
+ok()    { printf '%b\n' "${GREEN}[OK]${NC}    $*"; }
+warn()  { printf '%b\n' "${YELLOW}[WARN]${NC}  $*"; }
+error() { printf '%b\n' "${RED}[ERROR]${NC} $*"; exit 1; }
 
 # --- Parse arguments ---
 SKIP_DESTROY=false
@@ -85,9 +90,9 @@ if [ "$SKIP_DESTROY" = false ]; then
     fi
     sleep 10
     DELETE_WAITED=$((DELETE_WAITED + 10))
-    echo -n "."
+    printf '.'
   done
-  echo ""
+  printf '\n'
   if [ $DELETE_WAITED -ge $MAX_DELETE_WAIT ]; then
     warn "App deletion wait timed out after ${MAX_DELETE_WAIT}s — proceeding anyway (deploy may retry)"
   else
@@ -164,41 +169,20 @@ fi
 
 info "  App SP client ID: ${SP_CLIENT_ID}"
 
-# Get the endpoint host for direct psql connection
-ENDPOINT_INFO=$(databricks postgres get-endpoint \
-  "projects/${LAKEBASE_PROJECT}/branches/${LAKEBASE_BRANCH}/endpoints/primary" \
-  --output json 2>/dev/null)
-PG_HOST=$(echo "$ENDPOINT_INFO" | jq -r '.status.hosts.host // empty')
+ENDPOINT_PATH="projects/${LAKEBASE_PROJECT}/branches/${LAKEBASE_BRANCH}/endpoints/primary"
+info "  Lakebase endpoint: ${ENDPOINT_PATH}"
 
-if [ -z "$PG_HOST" ]; then
-  error "Could not find Lakebase endpoint host"
-fi
-
-info "  Lakebase host: ${PG_HOST}"
-
-# Get the current user's email (used as the psql user / postgres role)
-PG_USER=$(databricks current-user me --output json 2>/dev/null | jq -r '.userName // empty')
-if [ -z "$PG_USER" ]; then
-  error "Could not determine current Databricks user"
-fi
-
-# Get an OAuth token for psql authentication
-TOKEN=$(databricks auth token --output json 2>/dev/null | jq -r '.access_token // empty')
-if [ -z "$TOKEN" ]; then
-  error "Could not get OAuth token from databricks CLI"
-fi
-
-# Run the GRANT via psql
-info "  Connecting as: ${PG_USER}"
+# Use databricks psql — it handles OAuth auth via the bundle profile (unlike
+# `databricks auth token`, which only works with U2M login and fails silently
+# under set -e when piped through jq).
 info "  Running GRANT ALL ON SCHEMA ${SCHEMA_NAME}..."
-PGPASSWORD="$TOKEN" psql \
-  "host=${PG_HOST} port=5432 dbname=${DB_NAME} user=${PG_USER} sslmode=require connect_timeout=30" \
-  -c "GRANT ALL ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";" \
-  2>&1 || {
-    warn "GRANT command failed — the app may not have CREATE permission on public schema"
-    warn "You can grant manually:"
-    warn "  PGPASSWORD=\$(databricks auth token --output json | jq -r .access_token) psql \"host=${PG_HOST} port=5432 dbname=${DB_NAME} user=${PG_USER} sslmode=require\" -c 'GRANT ALL ON SCHEMA public TO \"${SP_CLIENT_ID}\";'"
-  }
+if ! databricks psql "$ENDPOINT_PATH" -- \
+  -d "${DB_NAME}" \
+  -c "GRANT ALL ON SCHEMA ${SCHEMA_NAME} TO \"${SP_CLIENT_ID}\";"; then
+  warn "GRANT command failed — the app may not have CREATE permission on public schema"
+  warn "You can grant manually:"
+  warn "  databricks psql ${ENDPOINT_PATH} -- -d ${DB_NAME} -c 'GRANT ALL ON SCHEMA public TO \"${SP_CLIENT_ID}\";'"
+fi
 ok "Permissions granted"
 
 # --- Step 5: Start compute, deploy code, and wait for the app ---
