@@ -2,3 +2,5 @@ node_modules/
 bin/
 .databricks/
 medplum.config.json
+package-lock.json
+.npmrc

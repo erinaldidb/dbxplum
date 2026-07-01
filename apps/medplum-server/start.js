@@ -468,7 +468,7 @@ async function startMedplum() {
   console.log(`  Database: ${process.env.PGHOST || 'localhost'}`);
   console.log(`  Redis: 127.0.0.1:${REDIS_PORT}`);
 
-  process.env.MEDPLUM_VERSION = '5.1.22';
+  process.env.MEDPLUM_VERSION = '5.1.23';
 
   const { main } = await import('./server/index.mjs');
   await main('file:medplum.config.json');

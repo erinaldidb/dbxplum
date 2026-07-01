@@ -11,6 +11,21 @@
     "start": "node start.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "@appsignal/opentelemetry-instrumentation-bullmq": "0.8.0",
+    "@opentelemetry/core": "2.8.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "0.219.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.219.0",
+    "@opentelemetry/instrumentation-dataloader": "0.36.0",
+    "@opentelemetry/instrumentation-express": "0.67.0",
+    "@opentelemetry/instrumentation-graphql": "0.67.0",
+    "@opentelemetry/instrumentation-http": "0.219.0",
+    "@opentelemetry/instrumentation-ioredis": "0.67.0",
+    "@opentelemetry/instrumentation-pg": "0.71.0",
+    "@opentelemetry/instrumentation-runtime-node": "0.32.0",
+    "@opentelemetry/sdk-metrics": "2.8.0",
+    "@opentelemetry/sdk-node": "0.219.0",
+    "bcrypt": "6.0.0",
+    "pdfmake": "0.2.21"
   }
 }

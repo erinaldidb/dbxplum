@@ -9,10 +9,10 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="theme-color" content="#5b2876" />
-    <meta name="medplum-version" content="5.1.22-6150c32" />
+    <meta name="medplum-version" content="5.1.23-0bc44b2" />
     <link rel="shortcut icon" type="image/x-icon" href="/assets/favicon-DP3nZwE_.ico" />
     <link rel="apple-touch-icon" href="/img/medplum-logo-512x512.png" />
-    <script>
+        <script>
       // Token relay: Databricks gateway strips Authorization headers.
       // Mirror the Medplum access token to a cookie so the proxy can inject it.
       (function() {
@@ -20,7 +20,6 @@
         function saveToken(token) {
           document.cookie = COOKIE_NAME + '=' + encodeURIComponent(token) + '; path=/; SameSite=Lax; Secure';
         }
-        // Intercept fetch() - Medplum client uses fetch API
         const origFetch = window.fetch;
         window.fetch = function(input, init) {
           if (init && init.headers) {
@@ -39,7 +38,6 @@
           }
           return origFetch.apply(this, arguments);
         };
-        // Also intercept XMLHttpRequest in case it's used
         const origSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
         XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
           if (name.toLowerCase() === 'authorization' && typeof value === 'string' && value.startsWith('Bearer ')) {
@@ -49,7 +47,7 @@
         };
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-D4aQni9B.js"></script>
+    <script type="module" crossorigin src="/assets/index--slpHYxY.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-36idBdlk.css">
   </head>
 

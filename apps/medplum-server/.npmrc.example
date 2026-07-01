@@ -1,0 +1,3 @@
+# Default registry for Databricks Apps deploy (no laptop-only npm proxy).
+# Copy to .npmrc when deploying, or let Databricks Apps resolve from package.json.
+registry=https://registry.npmjs.org/
