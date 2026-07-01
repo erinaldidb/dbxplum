@@ -1,5 +1,3 @@
-# dbxplum
-
 <p align="center">
   <img src="apps/medplum-server/logo.png" width="400" alt="dbxplum logo"/>
 </p>
