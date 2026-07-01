@@ -1,7 +1,7 @@
 # dbxplum
 
 <p align="center">
-  <img src="apps/medplum-server/logo.svg" width="200" alt="dbxplum logo"/>
+  <img src="apps/medplum-server/logo.png" width="400" alt="dbxplum logo"/>
 </p>
 
 **Medplum FHIR R4 server running on Databricks Apps with Lakebase (PostgreSQL) and co-located Redis.**
@@ -17,15 +17,15 @@ A production-ready deployment of [Medplum](https://www.medplum.com/) on the Data
 
 ```
 ┌──────────────────────────────────────────────────┐
-│            Databricks App (LARGE)                 │
-│                                                   │
-│  ┌───────────┐   ┌──────────┐   ┌────────────┐  │
+│            Databricks App (LARGE)                │
+│                                                  │
+│  ┌────────────┐   ┌──────────┐   ┌────────────┐  │
 │  │  Frontend  │   │  Medplum │   │   Redis    │  │
 │  │   Proxy    │──▶│  Server  │──▶│  (local)   │  │
 │  │  :8000     │   │  :8001   │   │  :6379     │  │
-│  └───────────┘   └────┬─────┘   └────────────┘  │
-│                        │                          │
-└────────────────────────┼──────────────────────────┘
+│  └────────────┘   └────┬─────┘   └────────────┘  │
+│                        │                         │
+└────────────────────────┼─────────────────────────┘
                          │ OAuth JWT (auto-refresh)
                          ▼
               ┌──────────────────────┐
@@ -186,4 +186,4 @@ databricks apps get medplum-server
 
 ## License
 
-MIT
+Databricks License
